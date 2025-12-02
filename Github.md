@@ -415,3 +415,32 @@ doc.Content.InsertAfter ("Hello, World!")
 End Sub
 No suspicious keyword or IOC found.
 ```
+# Web Attack Forensics
+Ứng dụng web là một phần không thể thiếu trong cuộc sống hiện nay và đã được sử dụng cho đa 
+
+# Exercise Web Application Forensics
+### 1. What IP address does the attack seem to be originating from?
+Chúng ta sử dụng lệnh `cat error.log | grep -i "sqli"` để liệt kê ra hết những log ghi lại quá trình kẻ tấn công thực hiện cuộc tấn công sql injection nếu có, và trong lần đầu kiểm tra xem kẻ tấn công sử dụng kiểu tấn công nào thì chúng ta đã có kết quả:
+<img width="1911" height="475" alt="image" src="https://github.com/user-attachments/assets/f7c59017-412b-4858-9b2c-8a923f0e3842" />
+
+Thấy dòng client di kèm theo 1 địa chỉ ip: **192.168.0.106** cùng với tags: "attack-sql" chúng ta có thể rút ra kết luận đây là một request sử dụng sql injection tấn công.
+### 2. Which vulnerabilities do you think are being exploited, and what evidence do you have to support your findings?
+Để biết được cách tấn công của attacker sử dụng để khai thác trang web, chúng ta sẽ đọc phần `access.logs` để biết được hắn đã thực thi những lệnh gì bằng lệnh `cat access.logs`
+<img width="1910" height="798" alt="image" src="https://github.com/user-attachments/assets/56378b35-eb67-45f4-bfaa-9e881dff13b0" />
+
+Qua output chúng ta sẽ thấy được các dòng 
+```
+192.168.0.106 - - [16/Feb/2023:01:35:27 +0500] "GET /view.php?image=../../../../etc/passwd HTTP/1.1" 200 650 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:35:30 +0500] "GET /view.php?image=../../../../etc/shadow HTTP/1.1" 200 202 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:35:39 +0500] "POST /command.php HTTP/1.1" 200 1143 "http://192.168.0.101:9090/command.php" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:36:07 +0500] "GET /database.php HTTP/1.1" 404 494 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:37:49 +0500] "GET /view.php?image=../../../../../../../../../important_note.txt HTTP/1.1" 200 501 "http://192.168.0.101:9090/images.php" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:36:19 +0500] "POST /users.php HTTP/1.1" 200 1115 "http://192.168.0.101:9090/users.php" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+192.168.0.106 - - [16/Feb/2023:01:38:53 +0500] "GET /users.php HTTP/1.1" 200 1117 "-" "sqlmap/1.6.11#stable (https://sqlmap.org)"
+```
+Chúng ta đã lọc ra những logs quan trọng nhất, và hãy bắt đầu phân tích từng log một để có thể hiểu hơn về intent của kẻ tấn công và hắn đã làm được gì:
+- Dòng log đầu tiên và thứ 2 chúng ta thấy hắn đã thành công khai thác lỗ hổng **Path traversal** để tải về máy hắn về được 2 dữ liệu quan trọng là /etc/passwd và /etc/shadow, 
+    - `/etc/passwd`: ở đây chứa các thông tin về danh sách người dùng, thông tin chung của các người dùng.
+    - `/etc/shadow`: chứa các thông tin về mật khẩu của đã băm của các root và các user khác.
+    => Khi kẻ tấn công lấy được 2 thứ này, hắn có thể sử dụng các công cụ bẻ khóa (crack) các hàm băm này và lấy mật khẩu.
+- Dòng log thứ 3 kẻ tấn công đã thành công khai thác lỗ hổng RCE(Remote Control Execution) và upload lên server một file command.php mà chúng ta  
