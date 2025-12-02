@@ -416,7 +416,172 @@ End Sub
 No suspicious keyword or IOC found.
 ```
 # Web Attack Forensics
-Ứng dụng web là một phần không thể thiếu trong cuộc sống hiện nay và đã được sử dụng cho đa 
+Ứng dụng web là một phần không thể thiếu trong cuộc sống hiện nay và đã được sử dụng trong phần lớn các hoạt động, từ mua hàng online, dùng để thanh toán hoặc là mạng xã hội. Tuy nhiên, việc sử dụng rộng rãi sẽ mở ra một bề mặt tấn công lớn cho các tác nhân xấu khai thác và giành được chỗ đứng ban đầu vào hệ thống.
+Trong lab này, chúng ta sẽ tìm hiểu về các loại tấn công khác nhau phổ biến đối với web applications và khám phá về các kĩ thuật để xác nhận các cuộc tấn công bằng cách phân tích web application logs và web application firewall logs để tìm ra điểm chính của attack, và truy tìm các nguyên nhân gốc rễ bằng cách xác định lỗ hổng đã bị khai thác.
+## Thiết lập môi trường
+Trước khi đi sâu vào chủ đề của tấn công webs và forensics, hãy bắt đầu thiết lập một môi trường Docker. Điều này cho phép chúng ta có thể thực hành và hiểu toàn diện về tài liệu được đề cập.
+```
+git clone https://github.com/vonderchild/digital-forensics-lab && cd digital-forensics-lab/Lab\ 4/files/app
+```
+### Tải về Docker
+```
+sudo apt-get update
+sudo apt-get install -y docker.io
+sudo service docker start
+```
+### Xây dựng & Và chạy Docker Image
+```
+docker build -t app:latest .
+docker run -p 9090:80 app:latest
+```
+# Web Attack & Forensics
+### Web Application & WAF Logs
+Web application logs đóng một vai trò quan trọng trong digital forensics vì nó giúp chúng ta xem lại các hành động của người dùng, xác nhận các mối đe dọa tiềm năng, truy tìm nguồn gốc của cuộc tấn công và xác định mức độ ảnh hưởng của nó. Trong lab này, chúng ta sẽ tập trung vào Apache, một máy chủ web rộng rãi được dùng để lưu trữ các ứng dụng web. Một nhật ký được tạo bởi Apache sẽ chứa access logs và error logs. Access logs chứa những thông tin về những yêu cầu đến như là Ip address của client, thời gian và ngày của yêu cầu, công cụ của yêu cầu (vdu GET, POST), những yêu cầu URI, những mã trạng thái phản hồi(200, 403, 404) và tác nhân của người dùng. Error logs, là một trường hợp khác, chứa những thông tin về các lỗi được đếm bởi server, như là các yêu cầu thất bại, các sự kiện không mong đợi đã xảy ra trong suốt quá trình của yêu cầu. Nhật ký này được tìm thấy trong `/var/log/apache2` trong hệ thống Linux.
+
+Web Application firewalls (WAFs) là một khía cạnh quan trọng của bảo mật ứng dụng web. WAF cung cấp các lớp bảo mật cho ứng dụng bởi chặn tất cả những lưu lượng độc hại
+trước khi nó ảnh hưởng đến các ứng dụng. Trong lab này, chúng ta sẽ sử dụng Modsecurity làm tường lửa cho ứng dụng web của chúng ta. Vị trí mặc định cho audit logs là `/var/log/apache/modsec_security_audit.log`. Khi một lỗi hay bất cứ nỗ lực độc hại sẽ bị đếm bởi server và ghi vào `/var/log/apache2/error.log`.
+```
+var
+└── log
+    └── apache2
+        ├── access.log
+        ├── error.log
+        ├── modsec_audit.log
+        └── other_vhosts_access.log
+```
+## Các kiểu tấn công web phổ biến & Logs
+Có rất nhiều lỗ hổng có thể bị khai thác trong web application có thể đi từ các lỗ hổng có tác động chưa lớn đến các lổ hổng thật sự nguy hiểm nếu kẻ tấn công có thể khai thác được vào và có một ví trí trong đặc quyền của server. Một số lỗ hổng như mà chúng ta chú ý trong phiên này bao gồm: Path Traversal, Remote Control Executions (RCE), SQL Injections.
+### Path Traversal
+Là một lỗ hổng cho phép kẻ tấn công truy cập vào file/folder nằm ngoài thư mục của web/root, nó thường được thực hiện bằng cách thao tác với các "enter field" đường dẫn tệp trong ứng dụng web để truy cập các tệp mà ứng dụng có quyền truy cập, nhưng kẻ tấn công thì không, nói dễ hơn là kẻ tấn công sẽ nhập vào các đường dẫn mà khiến hắn có thể truy cập vào các tệp mà những người dùng bình thường không thể truy cập chẳng hạn như truy cập vào các tệp cấu hình hoặc mã nguồn.
+Ví dụ: bạn đang ở thư mục chính là `/home/kali/`. Để thay đổi bạn quay trở về `/home/` thì bạn sẽ dùng lệnh `cd ../`. Tương tự như vậy, kẻ tấn công cũng có thể sử dụng cách này để đi vào phần gốc/các tệp bên ngoài ứng dụng web. 
+```
+Lưu ý: Thuật ngữ Path Traversal thường được sử dụng thay thế cho nhau với Local File inclusion (LFI), tuy nhiên cả hai đều là những lỗ hổng khác nhau; path traversal được giới han trong việc đọc các files, còn LFI cho phép thực thi các files đó trên server.
+```
+<img width="852" height="1378" alt="image" src="https://github.com/user-attachments/assets/5307f545-adf0-47ee-8a38-611af4258884" />
+
+Đây là giao diện bình thường, nhưng nếu chúng ta không nhập vào những tấm hình, mà muốn xâm nhập vào các thông tin /etc/passwd/. Rõ ràng sau vài lần thử với `../`, thì chúng ta đã thấy mình đã khai thác được, các thông tin chung về người dùng, và tên người dùng trong root. Đó là một ví dụ của Path traversal, khi các attacker đã sử dụng lỗ hổng này để khai thác các thông tin chung
+Nhận dạng bằng các chuỗi kí tự: ../../ , ..2%,..
+<img width="849" height="1321" alt="image" src="https://github.com/user-attachments/assets/583cd1e1-397f-4a75-acf6-72c2fdaec5d0" />
+
+Bây giờ chúng ta đã quen với phương pháp khai thác lỗ hổng này, hãy tiến hành tìm hiểu cách phát hiện nó trong nhật ký của chúng ta. Để truy cập nhật kí bên trong docker, thì chúng ta sử dụng lệnh `docker ps -q` để in ra được id của container hiện tại, và dùng lệnh `docker exec -it <ID_container> bash` để truy cập vào giao diện bash của linux trong container của id đó.
+```
+t0b1ra@tobiraNduy:~$ docker ps -q
+5988a9297d1e
+
+t0b1ra@tobiraNduy:~$ docker exec -it 5988a9297d1e bash
+root@5988a9297d1e:/#
+```
+Bây giờ chúng ta truy cập vào thư mục chứa nhập ký truy cập và in chúng ta 
+```
+root@5988a9297d1e:/var/log/apache2# cat access.log
+172.17.0.1 - - [02/Dec/2025:13:39:36 +0500] "GET /view.php?image=/../../../../../etc/passwd HTTP/1.1" 200 633 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:39:36 +0500] "GET /favicon.ico HTTP/1.1" 404 489 "http://127.0.0.1:9090/view.php?image=/../../../../../etc/passwd" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:49:42 +0500] "GET /view.php?image= HTTP/1.1" 200 203 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:52:19 +0500] "GET /images.php HTTP/1.1" 200 1114 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:52:19 +0500] "GET /images/starry_night.jpg HTTP/1.1" 304 250 "http://127.0.0.1:9090/images.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:52:19 +0500] "GET /images/red_vineyards.jpg HTTP/1.1" 304 251 "http://127.0.0.1:9090/images.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:13:52:19 +0500] "GET /images/almond_blossom.jpg HTTP/1.1" 304 251 "http://127.0.0.1:9090/images.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:14:29:24 +0500] "GET /images=? HTTP/1.1" 404 490 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:14:29:36 +0500] "GET /images=%C3%A1d HTTP/1.1" 404 490 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:14:29:59 +0500] "GET /etc/passwd HTTP/1.1" 404 490 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:14:31:24 +0500] "GET /view.php?image= HTTP/1.1" 200 203 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:14:31:40 +0500] "GET /view.php?image=/../../../../etc/passwd HTTP/1.1" 200 633 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+```
+Như chúng ta thấy được rằng, logs hiển thị đầy đủ các yêu cầu được thực hiện đến máy chủ `172.17.0.1` sử dụng trình duyệt Mozilla/Firefox để truy cập vào `/view.php`, `/image.php`. Chúng ta còn thấy các logs ghi lại việc mà ban nãy chúng ta đã khai thác path traversal của trang web này in ra `/etc/passwd`
+Bước tiếp theo là kiểm tra nhật ký Modsecurity WAF tạo ra.
+- Rude ID: `930100` hoặc `930110`
+- Message: Path traversal attack (/../)
+- Matched Data: /../ found within Request_URI
+- Severity CRITICAl - mức độ nguy hiểm cấp cao nhất.
+## Remote Control Execution(RCE)
+Trong một cuộc tấn công RCE(Remote Control Execution), kẻ tấn công có thể thực thi các lệnh độc hại trên máy chủ, tương tự như thực thi các lệnh trong thiết bị đầu cuối. Trong một số trường hợp nhất định, điều này cũng có thể được gọi là lỗ hổng Command Insert.
+
+Ví dụ: Nếu một trang web cho phép người dùng nhập lệnh để tìm kiếm tệp, kẻ tấn công tệp có thể nhập lệnh xóa tất cả tệp trên máy chủ bằng cách chèn các lệnh bổ sung như `; rm -rf /` vào trường input. Điều này có khả năng có thể làm tổn hại đến toàn bộ hệ thống nếu trang web có các quyền cần thiết để thực thi các lệnh đó.
+
+Bây giờ chúng ta sẽ đi vào thực hành thử trên web đã dựng:
+
+1.  `id`
+2.  `cat /etc/passwd`
+3.  `cat /etc/shadow`
+```
+Bây giờ chúng ta truy cập vào `access.log`:
+172.17.0.1 - - [02/Dec/2025:15:21:11 +0500] "POST /command.php HTTP/1.1" 200 1033 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:22:50 +0500] "POST /command.php HTTP/1.1" 200 1045 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:23:08 +0500] "POST /command.php HTTP/1.1" 200 1051 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:24:12 +0500] "POST /command.php HTTP/1.1" 200 1376 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:24:31 +0500] "POST /command.php HTTP/1.1" 200 1020 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:24:32 +0500] "POST /command.php HTTP/1.1" 500 1087 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:24:32 +0500] "POST /command.php HTTP/1.1" 500 1087 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+172.17.0.1 - - [02/Dec/2025:15:24:32 +0500] "POST /command.php HTTP/1.1" 500 1087 "http://127.0.0.1:9090/command.php" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+```
+Có thể thấy các logs trên đều ghi lại các yêu cầu đến và không tiết lộ các lệnh người dùng nhập vì đó là yêu cầu POSR. Đây là nơi WAF phát huy tác dụng vì nó có thể hiển thị cả nội dung và yêu cầu và phản hồi. Để xem người dùng đã nhập gì chúng ta vào logs WAF.
+```
+<SNIP>
+
+Message: Warning. Matched phrase "etc/passwd" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf"] [line "97"] [id "930120"] [msg "OS File Access Attempt"] [data "Matched Data: etc/passwd found within ARGS:cmd: cat /etc/passwd"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-lfi"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/255/153/126"] [tag "PCI/6.5.4"]
+Message: Warning. Matched phrase "etc/passwd" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf"] [line "500"] [id "932160"] [msg "Remote Command Execution: Unix Shell Code Found"] [data "Matched Data: etc/passwd found within ARGS:cmd: cat/etc/passwd"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-shell"] [tag "platform-unix"] [tag "attack-rce"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/88"] [tag "PCI/6.5.2"]
+
+<SNIP>
+
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Matched phrase "etc/passwd" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf"] [line "97"] [id "930120"] [msg "OS File Access Attempt"] [data "Matched Data: etc/passwd found within ARGS:cmd: cat /etc/passwd"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-lfi"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/255/153/126"] [tag "PCI/6.5.4"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT-PsFa_lKkx8ckcXpMAAAAAQ"]
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Matched phrase "etc/passwd" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf"] [line "500"] [id "932160"] [msg "Remote Command Execution: Unix Shell Code Found"] [data "Matched Data: etc/passwd found within ARGS:cmd: cat/etc/passwd"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-shell"] [tag "platform-unix"] [tag "attack-rce"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/88"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT-PsFa_lKkx8ckcXpMAAAAAQ"]
+
+<SNIP>
+
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Operator GE matched 5 at TX:inbound_anomaly_score. [file "/usr/share/modsecurity-crs/rules/RESPONSE-980-CORRELATION.conf"] [line "91"] [id "980130"] [msg "Inbound Anomaly Score Exceeded (Total Inbound Score: 13 - SQLI=0,XSS=0,RFI=0,LFI=5,RCE=5,PHPI=0,HTTP=0,SESS=0): individual paranoia level scores: 13, 0, 0, 0"] [ver "OWASP_CRS/3.3.2"] [tag "event-correlation"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT-PsFa_lKkx8ckcXpMAAAAAQ"]
+
+<SNIP>
+```
+Chúng ta chỉ có thể xem được các log ghi lại các lệnh như `/etc/passwd`, bởi vì WAF đã phát hiện nỗ lực phiên LFI và RCE.
+Đối với lệnh `/etc/shadow` chúng ta không thấy máy chủ phản hồi là do máy chủ đang chạy với quyền người dùng và không có đặc quyền `www-data`, và quyền truy cập cần thiết để xem nội dung của `/etc/shadow` chúng ta có thể xác nhận điều này qua lỗi:
+```
+root@5988a9297d1e:/var/log/apache2# cat error.log | grep 'Permission denied'
+cat: /etc/shadow: Permission denied
+```
+Nhưng máy chủ vẫn có thể xác định được đây là một nỗ lực khai thác LFI và RCE nên vẫn sẽ ghi nó lại bên trong modsec_audit.logs
+```
+<SNIP>
+
+Message: Warning. Matched phrase "etc/shadow" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf"] [line "97"] [id "930120"] [msg "OS File Access Attempt"] [data "Matched Data: etc/shadow found within ARGS:cmd: cat /etc/shadow"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-lfi"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/255/153/126"] [tag "PCI/6.5.4"]
+Message: Warning. Matched phrase "etc/shadow" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf"] [line "500"] [id "932160"] [msg "Remote Command Execution: Unix Shell Code Found"] [data "Matched Data: etc/shadow found within ARGS:cmd: cat/etc/shadow"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-shell"] [tag "platform-unix"] [tag "attack-rce"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/88"] [tag "PCI/6.5.2"]
+
+<SNIP> 
+
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Matched phrase "etc/shadow" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf"] [line "97"] [id "930120"] [msg "OS File Access Attempt"] [data "Matched Data: etc/shadow found within ARGS:cmd: cat /etc/shadow"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-lfi"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/255/153/126"] [tag "PCI/6.5.4"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT_V10ftOo0AKdI-JC2gAAAAU"]
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Matched phrase "etc/shadow" at ARGS:cmd. [file "/usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf"] [line "500"] [id "932160"] [msg "Remote Command Execution: Unix Shell Code Found"] [data "Matched Data: etc/shadow found within ARGS:cmd: cat/etc/shadow"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.2"] [tag "application-multi"] [tag "language-shell"] [tag "platform-unix"] [tag "attack-rce"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/88"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT_V10ftOo0AKdI-JC2gAAAAU"]
+
+<SNIP>
+
+Apache-Error: [file "apache2_util.c"] [line 271] [level 3] [client 172.17.0.1] ModSecurity: Warning. Operator GE matched 5 at TX:inbound_anomaly_score. [file "/usr/share/modsecurity-crs/rules/RESPONSE-980-CORRELATION.conf"] [line "91"] [id "980130"] [msg "Inbound Anomaly Score Exceeded (Total Inbound Score: 13 - SQLI=0,XSS=0,RFI=0,LFI=5,RCE=5,PHPI=0,HTTP=0,SESS=0): individual paranoia level scores: 13, 0, 0, 0"] [ver "OWASP_CRS/3.3.2"] [tag "event-correlation"] [hostname "127.0.0.1"] [uri "/command.php"] [unique_id "Y-rT_V10ftOo0AKdI-JC2gAAAAU"
+
+<SNIP>
+```
+## SQL Injection
+SQL injection hay SQLi là kẻ tấn công thao túng các trường đầu vào của trang web để gửi mã SQL độc hại, sau đó mã này được thực thi trên máy chủ.
+Ví dụ: hãy xem xét một trang web có trang đăng nhập có tên người dùng và mật khẩu. Thông thường, trang web sẽ so sánh thông tin xác thực đã nhập với thông tin được lưu trữ trong cơ sở dữ liệu để xác định xem người dùng có được cấp quyền truy cập hay không. Nếu mã của trang web dễ bị tấn công bởi SQL injection, kẻ tấn công có thể dùng lệnh ` ' OR 1=1--` với tên người dùng của họ, về cơ bản sẽ lừa CSDL trả về tất cả các bản ghi và bỏ qua xác thực.
+Thực thi lệnh:
+1. `user1' and 1=1 #` -> đây là lệnh in ra thông tin user1 với tên và email.
+2. `usser1' union select username, email, password from users #`
+<img width="1696" height="1328" alt="image" src="https://github.com/user-attachments/assets/970418f8-8a2c-402f-954a-c3e4cba27b5b" />
+
+Chúng ta sử dụng truy vấn đầu tiên để kiểm tra xem ứng dụng có cho phép chạy lệnh thực thi đến máy chủ không, và khi thấy có thể chúng ta sử dụng cách tấn công SQL injection để trích xuất mk và email người dùng.
+
+Vì cả hai đều là yêu cầu POST nên chúng ta kiểm tra chúng trong `error.log`
+```
+[Tue Dec 02 15:39:27.418712 2025] [security2:error] [pid 268] [client 172.17.0.1:53096] [client 172.17.0.1] ModSecurity: Warning. detected SQLi using libinjection with fingerprint 's&1c' [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "66"] [id "942100"] [msg "SQL Injection Attack Detected via libinjection"] [data "Matched Data: s&1c found within ARGS:search: user1' and 1=1 #"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-sqli"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/66"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7B33S7D0Y-KGIb15sHhgAAAAg"], referer: http://127.0.0.1:9090/users.php
+
+[Tue Dec 02 15:39:27.418931 2025] [security2:error] [pid 268] [client 172.17.0.1:53096] [client 172.17.0.1] ModSecurity: Warning. Operator GE matched 5 at TX:anomaly_score. [file "/usr/share/modsecurity-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "94"] [id "949110"] [msg "Inbound Anomaly Score Exceeded (Total Score: 8)"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-generic"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7B33S7D0Y-KGIb15sHhgAAAAg"], referer: http://127.0.0.1:9090/users.php
+
+[Tue Dec 02 15:40:36.661509 2025] [security2:error] [pid 262] [client 172.17.0.1:42996] [client 172.17.0.1] ModSecurity: Warning. detected SQLi using libinjection with fingerprint 'sUEnk' [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "66"] [id "942100"] [msg "SQL Injection Attack Detected via libinjection"] [data "Matched Data: sUEnk found within ARGS:search: user1' union select username, email, password from users #"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-sqli"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/66"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7CJJhkNXIkhV-xBkb0ogAAAAI"], referer: http://127.0.0.1:9090/users.php
+
+[Tue Dec 02 15:40:36.661560 2025] [security2:error] [pid 262] [client 172.17.0.1:42996] [client 172.17.0.1] ModSecurity: Warning. Pattern match "(?i:(?:[\\"'`](?:;?\\\\s*?(?:having|select|union)\\\\b\\\\s*?[^\\\\s]|\\\\s*?!\\\\s*?[\\"'`\\\\w])|(?:c(?:onnection_id|urrent_user)|database)\\\\s*?\\\\([^\\\\)]*?|u(?:nion(?:[\\\\w(\\\\s]*?select| select @)|ser\\\\s*?\\\\([^\\\\)]*?)|s(?:chema\\\\s*?\\\\([^\\\\)]*?|elect.*?\\\\w?user\\\\()|in ..." at ARGS:search. [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "184"] [id "942190"] [msg "Detects MSSQL code execution and information gathering attempts"] [data "Matched Data: ' union s found within ARGS:search: user1' union select username, email, password from users #"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-sqli"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/66"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7CJJhkNXIkhV-xBkb0ogAAAAI"], referer: http://127.0.0.1:9090/users.php
+
+[Tue Dec 02 15:40:36.661600 2025] [security2:error] [pid 262] [client 172.17.0.1:42996] [client 172.17.0.1] ModSecurity: Warning. Pattern match "(?i)union.*?select.*?from" at ARGS:search. [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "297"] [id "942270"] [msg "Looking for basic sql injection. Common attack string for mysql, oracle and others"] [data "Matched Data: union select username, email, password from found within ARGS:search: user1' union select username, email, password from users #"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-sqli"] [tag "paranoia-level/1"] [tag "OWASP_CRS"] [tag "capec/1000/152/248/66"] [tag "PCI/6.5.2"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7CJJhkNXIkhV-xBkb0ogAAAAI"], referer: http://127.0.0.1:9090/users.php
+
+[Tue Dec 02 15:40:36.661727 2025] [security2:error] [pid 262] [client 172.17.0.1:42996] [client 172.17.0.1] ModSecurity: Warning. Operator GE matched 5 at TX:anomaly_score. [file "/usr/share/modsecurity-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "94"] [id "949110"] [msg "Inbound Anomaly Score Exceeded (Total Score: 18)"] [severity "CRITICAL"] [ver "OWASP_CRS/3.3.5"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-generic"] [hostname "127.0.0.1"] [uri "/users.php"] [unique_id "aS7CJJhkNXIkhV-xBkb0ogAAAAI"], referer: http://127.0.0.1:9090/users.php
+```
+Khi chúng ta gõ lệnh `cat error.log | grep SQLi -i` chúng ta sẽ thấy modsec ghi lại tất cả các logs mà nó đã xác nhận đây là một phiên nỗ lực tấn công bằng SQL injection và thông qua các tags,severity chúng ta có thể thấy rõ.
+
 
 # Exercise Web Application Forensics
 ### 1. What IP address does the attack seem to be originating from?
