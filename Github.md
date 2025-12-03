@@ -664,10 +664,15 @@ Hệ thống tệp FAT là một hệ thống tệp rất cơ bản. Nó hoàn t
 
 ## Basic Terminology
 **Disk Image**: là một bản sao kỹ thuật chính xác từng bit một (bit-for-bit copy) của một Disk hoặc một volume. Nó là một phần bảo tồn chính xác các nội dung hoặc cấu trúc của dữ liệu gốc. Nó bao gồm không chỉ các files và folders mà còn các không gian trống, metadata và các dữ liệu ẩn.
+
 **Disk imaging** là quá trình tạo ra một bản sao forensics cho việc lưu trữ thiết bị, như là ổ cững hoặc là USB. Nó là một bước rất quan trọng trong pháp y kỹ thuật số bởi vì nó đảm bảo các dữ liệu gốc được duy trì nguyên vẹn và không bị thay đổi. Cryptographic hashes được sử dụng trong việc xác thực các bản sao đó trùng với bản gốc, đảm bảo không có sự thay đổi nào với dữ liệu gốc. Điều này cho phép nhà điều tra pháp y làm việc với bản sao mà không lo vô tình thay đổi dữ liệu.
+
 **Disk image Forensics** là một quá trình phân tích các disk image để tìm kiếm các bằng chứng mình quan tâm. Nó bao gồm việc sử dụng các công cụ như Autopsy hay FTK Imager để lấy ra những thông tin hữu ích và phân tích nó với các dấu vết hệ thống như là windows registry, trình duyệt web, tệp `.LNK`, event logs, lịch sử cmd, ....
+
 **Disk** là thiết bị phần cứng vật lý lưu trữ dữ liệu. Nó là cái mà bạn có thể cầm nắm được như (HDD, SSD, USB).
+
 **Volume** là một phần của disk được chia ra và định dạng (format) bằng một hệ thống tệp gọi là (File System như NTFS, FAT32) để hệ điều hành có thể đọc và ghi dữ liệu. Hệ điều hành gán cho nó một ký tự (logical Drive Letter). Một disk có thể chứa một hoặc nhiều Volume.
+
 **Case(Hồ sơ điều tra)** là một dự án hoặc một thùng chứa trong phần mềm điều tra như Autopsy,FTK,... Nó dùng để quản lý toàn bộ quá trình điều tra. Một file case có thể chứa:
 - Các file Image (bằng chứng đầu vào như tệp `.ad1`, `.aut`,...
 - Các ghi chú của điều tra viên
