@@ -608,4 +608,68 @@ Chúng ta đã lọc ra những logs quan trọng nhất, và hãy bắt đầu 
     - `/etc/passwd`: ở đây chứa các thông tin về danh sách người dùng, thông tin chung của các người dùng.
     - `/etc/shadow`: chứa các thông tin về mật khẩu của đã băm của các root và các user khác.
     => Khi kẻ tấn công lấy được 2 thứ này, hắn có thể sử dụng các công cụ bẻ khóa (crack) các hàm băm này và lấy mật khẩu.
-- Dòng log thứ 3 kẻ tấn công đã thành công khai thác lỗ hổng RCE(Remote Control Execution) và upload lên server một file command.php mà chúng ta  
+- Dòng log thứ 3 kẻ tấn công đã thành công khai thác lỗ hổng RCE(Remote Control Execution) và upload lên server một file command.php mà chúng ta
+
+# Disk Image Forensics
+Các thiết bị lưu trữ số, như là ổ cứng, ổ cứng rắn, hoặc là USB nắm giữ lượng lớn dữ liệu có thể rất quan trọng với các cuộc điều tra pháp y kỹ thuật số. Disk image forensics là một quá trình phân tích các thiết bị và nội dung tìm kiếm có thể rất hữu ích trong quá trình điều tra.
+
+Trong lab này chúng ta sẽ mở rộng hơn 1 tí, tìm hiểu về hai file system trước đây và hiện tại sử dụng nhiều của Windows Microsoft là FAT(File Allocation Table) và NTFS(New Technology File System):
+## FAT (File Allocation Table)
+Một cấu trúc dữ liệu của hệ thống tệp FAT: Hệ thống tệp FAT hỗ trợ các Cấu trúc dữ liệu sau:
+- **Cluster(Cụm):** Một cluster là đơn vị lưu trữ cơ bản của hệ thống tệp FAT. Mỗi tệp được lưu trên thiết bị lưu trữ có thể được coi là một nhóm các cluster chứa các bit thông tin.
+    - Cluster: là đơn vị lưu trữ nhỏ nhất trong hệ thống tệp mà hệ điều hành có thể quản lí.
+    - Bản chất của ổ cứng có hàng tỷ ô nhỏ gọi là các Sector(thường là 512 byte). Tuy nhiên, quản lý từng ô nhỏ này quá phức tạp và tốn tài nguyên. Do đó, hệ thống gom nhiều Sector lại thành một Cluster để dễ hơn trong quá trình quản lý.
+    - Ví dụ: Nếu bạn có một tệp tin rất nhỏ (vdu 1KB) nhưng kích thước Cluster là 4KB, tệp tin đó vẫn sẽ chiếm trọn 1 CLuster (chiếc hộp 4KB). Phần thừa 3KB còn lại bị lãng phí gọi là (Slack Space - không gian thừa). Nếu một tệp tin lớn hơn thì nó sẽ được chia cho nhiều cluster khác.
+- **Directory(Thư mục):** Một thư mục chứa thông tin về nhận dạng tệp, chẳng hạn như tên tệp, cluster bắt đầu, các metadat,..
+    - Directory: là cấu trúc tổ chức chứa thông tin về tệp.
+    - Trong hệ thống tệp FAT, Directory không chứa nội dung của tệp, nó chứa các metadata của tệp bao gồm:
+        - Tên tệp (file name)
+        - Phần mở rộng của tệp (file extention)
+        - Kích thước (size)
+        - Thời gian tạo/sửa đổi (time create/modify)
+        - Quan trọng nhất là con trỏ, trỏ tới cluster đầu tiên nơi tệp được lưu.
+- **FAT(File Allocation Table):** Bảng phân bổ tệp tin, là một danh sách liên kết (linked list) của tất cả các cluster. Nó chứa trạng thái của cluster và con trỏ đến cluster tiếp theo của chuỗi.
+    - FAT: Bảng phân bổ tệp tin.
+    - Bản chất: hãy tưởng tượng rằng ổ cứng của bạn là một cuốn sách khổng lồ thì, FAT chính là mục lục cho cuốn sách chứa nhiều thông tin đó, nó sẽ ghi rõ trạng thái và con trỏ tiếp theo của cluster trỏ đến là ở đâu giúp bạn có thể định địa chỉ cho cluster dễ dàng
+    - Trong một số trường hợp mà tệp FAT bị hỏng, nội dung trong ổ đĩa vẫn còn đó thế nhưng máy tính không còn thứ gì dẫn đường cho nó xử lí dữ liệu gây ra việc lạc mất dữ liệu.
+- **FAT12, FAT16, FAT32**: các con số như là 12, 16, 32 là các bit được dùng để đặt địa chỉ định danh cho các cluster.
+    - **FAT12** là hệ thống tệp đã cũ và không còn được sử dụng cho ngày nay nữa, ngày xưa nó được sử dụng cho các đĩa mềm (Floop disk). Số lượng địa chỉ quá ít nên chỉ quản lí một phần nhỏ ổ đĩa.
+    - **FAT16** là hệ thống phổ biến thời MS-DOS và Windows 95. Hạ chế lớn là dung lượng phân vùng tối đa chỉ có 2GB ( hoặc 4GB). Ngày nay rất ít dùng.
+    - **FAT32** tương thích cực tốt. Cắm USB FAT32 vào Windows, MAC, Linux TV máy game loa đều có thể dùng được. Nhưng nó cũng có nhược điểm là không thể lưu trữ tập tin nào lớn hơn 4GB, nếu có 1 bộ phim HD nặng 5GB, bạn không thể đưa nó vào một USB FAT32.
+    - **exFAT**: là bảng phân bổ tệp tin mở rộng.
+        - Dùng để khắc phục các hạn chế của FAT32 chỉ có thể chứa tối đa 4GB nhưng vẫn giữ được sự nhẹ nhàng không phức tạp như NTFS của Windows.
+        - Đặc điểm:
+            - Không giới hạn 4GB: Bạn có thể lưu trữ các tệp video 4k, 8k khổng lồ thoải mái
+            - Tương thích cao: Hoạt động tốt trên cả Windows và MacOS (trong khi NTFS thì MacOS chỉ đọc được chứ mặc định không ghi được)
+            - Tối ưu cho thẻ nhớ/USB: Được thiết kế để không ghi xóa quá nhiều lần không cần thiết, giúp tăng tuổi thọ cho bộ nhớ flash (thẻ nhớ máy ảnh, USB).
+## NTFS (New Technology File System)
+Hệ thống tệp FAT là một hệ thống tệp rất cơ bản. Nó hoàn thành công việc khi nói đến việc tổ chức dữ liệu của chúng ta, nhưng nó cung cấp rất ít khả năng về bảo mật, độ tin cậy và khả năng phục hồi, hạn chế về kích thước tệp và kích thước phân vùng cũng rất đáng nói. Thế nên Microsoft đã tạo ra một hệ thống tệp mới gọi là, Hệ thống tệp công nghệ mới (NTFS) nó đã khắc phục hết tất cả những nhược điểm mà hệ thống tệp FAT gặp phải và đồng thời còn tạo ra các tính năng mới như:
+### Journaling (Ghi nhật ký hệ thống)
+ - Hệ thống tệp NTFS lưu giữ một nhật ký về các thay đổi đối với metadata trong phân vùng. Tính năng này giúp hệ thống phục hồi sau sự cố hoặc khi di chuyển dữ liệu do chống phân mảnh. Nhật ký này được lưu trữ trong tệp `$LOGFILE` ở thư mục gốc của phân vùng. Do đó, hệ thống tệp NTFS được gọi là hệ thống tệp journaling.
+ - Trong NTFS: Trước khi thực hiện thay đổi lên ổ cứng (như lưu file), NTFS ghi thông tin hành động đó vào `$LOGFILE`. Nếu máy tính bị sập nguồn dột ngột (crash), khi khởi động lại NTFS đọc `$LOGFILE` để sửa lỗi, giúp dữ liệu tránh bị hỏng.
+### Access Control Lists(ACLs - Danh sách kiểm soát truy cập)
+- Giải thích: NTFS cho phép gán quyền chi tiết (Read, Write, Execute) cho từng người dùng cụ thể. FAT32 không làm được điều này (ai vào được ổ đĩa là xem được hết). Đây là nền tảng bảo mật của Windows.
+- Hệ thống tệp FAT không có kiểm soát truy cập dựa trên người dùng. Hệ thống tệp NTFS có các kiểm soát quyền truy cập vào tệp cho người dùng giúp đảm bảo tính bảo mật hơn.
+### Volume Shadow Copy(Bản sao bóng phân vùng)
+- Hệ thống tệp NTFS theo dõi các thay đổi được thực hiện đối với một tệp bằng tính năng gọi là Volume Shadow Copies. Sử dụng tính năng này, người dùng có thể khôi phục các phiên bản tệp trước đó để phục hồi dữ liệu hoặc khôi phục hệ thống. Trong các cuộc tấn công ransomware, các ransomware đã bị ghi nhận là xóa các shadow copies trên hệ thống của nạn nhân để ngăn họ khôi phục dữ liệu.
+- Trong forensics: Đây là "mỏ vàng" cho điều tra viên. Kể cả khi hacker xóa file hoặc mã hóa file (ransomeware), VSS thường vẫn lưu trữ một bản san lưu (snapshot) của file đó tại thời điểm trong quá khứ. Hacker chuyên nghiệp thường chạy lệnh `vssadmin delete shadows/all/quiet` để xóa sạch các bản sao này trước khi tấn công.
+### Alternate Data Stream(ADS-Luồng dữ liệu thay thế)
+- Một tệp là một luồng dữ liệu được tổ chức trong một hệ thống tệp. Alternate Data Streams (ADS) là một tính năng trong NTFS cho phép các tệp có nhiều luồng dữ liệu được lưu trữ trong một tệp duy nhất. Internet Explorer và các trình duyệt khác sử dụng ADS để nhận dạng các tệp được tải xuống từ internet (sử dụng ADS Zone Identifier). Phần mềm độc hại (Malware) cũng đã được quan sát thấy ẩn mã độc của chúng trong ADS.
+- Nói dễ hiểu hơn là nó cho phép bạn chạy kèm 1 file ẩn bên trong 1 file với tính năng đa luồng - tức là khi bạn có 1 tệp `report.txt` (hiển thi 10KB), bạn có thể dùng ADS giấu bên trong (`report.txt` một file `malware.exe` hiển thị (100mb) thì họ chỉ thấy tệp `.txt` và khi mở thì họ vô tình khởi động cả tệp `.exe`
+- Zone Identifier: Khi bạn tải 1 file từ Internet, Windows sẽ gắn một "nhãn" ADS vào file đó để đánh dấu "File này đến từ Internet, hãy cẩn thận".
+### $MFT, $MFTmirr, $LogFile, $UsnJrnl (Các tệp siêu dữ liệu)
+- **$MFT**: The Master File table là một file quan trọng trong NTFS file system, nó lưu trữ những thông tin về tất cả các file và thư mục trên volume, bao gồm tên của nó, quyền, và thuộc tính. Nó chứa những thông tin về vị trí của file khác trên disk.
+- **$MFTmirr**: File này là viết tắt của MFT mirror và nó đóng vai trò như là một file backup cho $MFT, nó rất cần thiết trong trường hợp $MFT gốc bị hỏng.
+- **$LogFile**: File này ghi lại những nhật ký thông tin của metadata, và có thể dùng để khôi phục dữ liệu.
+
+## Basic Terminology
+**Disk Image**: là một bản sao kỹ thuật chính xác từng bit một (bit-for-bit copy) của một Disk hoặc một volume. Nó là một phần bảo tồn chính xác các nội dung hoặc cấu trúc của dữ liệu gốc. Nó bao gồm không chỉ các files và folders mà còn các không gian trống, metadata và các dữ liệu ẩn.
+**Disk imaging** là quá trình tạo ra một bản sao forensics cho việc lưu trữ thiết bị, như là ổ cững hoặc là USB. Nó là một bước rất quan trọng trong pháp y kỹ thuật số bởi vì nó đảm bảo các dữ liệu gốc được duy trì nguyên vẹn và không bị thay đổi. Cryptographic hashes được sử dụng trong việc xác thực các bản sao đó trùng với bản gốc, đảm bảo không có sự thay đổi nào với dữ liệu gốc. Điều này cho phép nhà điều tra pháp y làm việc với bản sao mà không lo vô tình thay đổi dữ liệu.
+**Disk image Forensics** là một quá trình phân tích các disk image để tìm kiếm các bằng chứng mình quan tâm. Nó bao gồm việc sử dụng các công cụ như Autopsy hay FTK Imager để lấy ra những thông tin hữu ích và phân tích nó với các dấu vết hệ thống như là windows registry, trình duyệt web, tệp `.LNK`, event logs, lịch sử cmd, ....
+**Disk** là thiết bị phần cứng vật lý lưu trữ dữ liệu. Nó là cái mà bạn có thể cầm nắm được như (HDD, SSD, USB).
+**Volume** là một phần của disk được chia ra và định dạng (format) bằng một hệ thống tệp gọi là (File System như NTFS, FAT32) để hệ điều hành có thể đọc và ghi dữ liệu. Hệ điều hành gán cho nó một ký tự (logical Drive Letter). Một disk có thể chứa một hoặc nhiều Volume.
+**Case(Hồ sơ điều tra)** là một dự án hoặc một thùng chứa trong phần mềm điều tra như Autopsy,FTK,... Nó dùng để quản lý toàn bộ quá trình điều tra. Một file case có thể chứa:
+- Các file Image (bằng chứng đầu vào như tệp `.ad1`, `.aut`,...
+- Các ghi chú của điều tra viên
+- Các bookmark những file khả nghi
+- Các báo cáo kết quả.
