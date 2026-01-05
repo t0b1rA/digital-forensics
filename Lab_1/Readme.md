@@ -1,6 +1,5 @@
-# Digital-forensics-lab
---- 
-## Common Windows Artifacts.
+
+# Common Windows Artifacts.
 Trong hệ điều hành Windows thì nó chứa đựng lượng lớn các dấu vết bao gồm: các thư mục, các files, logs, registry, lịch sử browser, tài khoản người dùng và rất nhiefu những dữ liệu quan trọng khác rất cần thiết, để hoạt động đúng cách.
 ## Windows Registry
 - Là một hệ thống phân cấp cơ sở dữ liệu, mà ở đó lưu trữ những cấu hình cho người dùng bao gồm ứng dụng và phần cứng thiết bị.
